@@ -20,8 +20,6 @@ DEBUG_INFO = DATA_DIR / "debug_info.txt"
 # =========================
 # ROI / UTSNITT
 # =========================
-# Berre dette området av biletet blir brukt.
-# Start med heile biletet eller eit grovt område, og juster etterpå.
 ROI_X = 970
 ROI_Y = 170
 ROI_W = 2680
@@ -35,17 +33,47 @@ USE_ROI = True
 BED_WIDTH_MM = 250.0
 BED_HEIGHT_MM = 210.0
 
-MM_PER_PIXEL = 1.0/11.0
+MM_PER_PIXEL = 1.0 / 11.0
 
 OFFSET_X = 20.0
 OFFSET_Y = 20.0
 
 SAFE_Z = 10.0
-CUT_Z = 0
+CUT_Z = 0.0
 
-FEED_XY = 1800
 FEED_Z = 600
 FEED_TRAVEL = 3000
+
+# =========================
+# DRAG KNIFE / KOMPENSASJON
+# =========================
+# Start med 0.35 mm om du har vanleg liten drag knife.
+# Dersom du VET at fysisk offset er 3 mm, kan du setje 3.0 her,
+# men då må du forvente mykje større svingrørsler og dårlegare
+# små detaljar.
+KNIFE_OFFSET_MM = 0.35
+
+# Svingar mindre enn dette får ikkje eigen swivel move.
+CORNER_TOLERANCE_DEG = 20.0
+
+# Kor tett vi resamplar punkt langs banen.
+PATH_POINT_SPACING_MM = 0.35
+
+# Kor mange linjesegment vi bruker for å lage swivel-bogen i hjørne.
+SWIVEL_ARC_SEGMENTS = 12
+
+# Små detaljar går saktare.
+SMALL_PATH_PERIMETER_MM = 20.0
+SMALL_RADIUS_MM = 3.0
+
+FEED_XY_NORMAL = 1400
+FEED_XY_SLOW = 500
+FEED_XY_SWIVEL = 350
+
+# Valfritt: liten Z-løft under skarpe swivel-rørsler.
+# Sidan CUT_Z hos deg er 0, er det tryggast å starte utan dette.
+USE_SWIVEL_LIFT = False
+SWIVEL_Z = 0.2
 
 # =========================
 # BILETBEHANDLING
@@ -161,7 +189,6 @@ def preprocess_image(img):
     if USE_MORPH_CLOSE:
         binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
 
-        # Behald berre største kvite samanhengande objekt
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(binary, connectivity=8)
 
     if num_labels > 1:
@@ -202,7 +229,6 @@ def find_valid_contours(binary_img):
 
     hierarchy = hierarchy[0]
 
-    # Finn berre ytre konturar først (parent = -1)
     external_indices = []
     for i, h in enumerate(hierarchy):
         parent = h[3]
@@ -221,15 +247,11 @@ def find_valid_contours(binary_img):
     if not external_indices:
         fail("Fann ingen gyldige ytre konturar")
 
-    # Vel største ytre objekt
     main_idx = max(external_indices, key=lambda i: cv2.contourArea(contours[i]))
 
     filtered = []
-
-    # Ta med sjølve ytterkonturen
     filtered.append(contours[main_idx])
 
-    # Ta med barn av denne konturen (hol i pakninga)
     for i, h in enumerate(hierarchy):
         parent = h[3]
         if parent == main_idx:
@@ -241,16 +263,14 @@ def find_valid_contours(binary_img):
 
             filtered.append(cnt)
 
-    # Små først, stor utside sist
     filtered.sort(key=cv2.contourArea)
-
     return filtered
 
 
 def smooth_contour(cnt):
-    epsilon = APPROX_EPSILON_FACTOR * cv2.arcLength(cnt, True)
-    approx = cv2.approxPolyDP(cnt, epsilon, True)
-    return approx
+    # For drag knife er det betre å halde på rå kontur
+    # enn å polygonforenkle aggressivt.
+    return cnt
 
 
 def contour_to_points(cnt):
@@ -271,6 +291,228 @@ def transform_points_to_mm(points, image_height):
         transformed.append((x_mm, y_mm))
 
     return transformed
+
+
+def distance(p1, p2):
+    return float(np.hypot(p2[0] - p1[0], p2[1] - p1[1]))
+
+
+def normalize(vx, vy):
+    length = float(np.hypot(vx, vy))
+    if length == 0:
+        return 0.0, 0.0
+    return vx / length, vy / length
+
+
+def signed_turn_angle_deg(v1, v2):
+    x1, y1 = normalize(v1[0], v1[1])
+    x2, y2 = normalize(v2[0], v2[1])
+
+    dot = np.clip(x1 * x2 + y1 * y2, -1.0, 1.0)
+    cross = x1 * y2 - y1 * x2
+
+    angle = np.degrees(np.arctan2(cross, dot))
+    return float(angle)
+
+
+def resample_closed_path(points, spacing):
+    if len(points) < 3:
+        return points[:]
+
+    pts = points[:]
+    if pts[0] != pts[-1]:
+        pts.append(pts[0])
+
+    new_points = [pts[0]]
+
+    for i in range(len(pts) - 1):
+        p1 = pts[i]
+        p2 = pts[i + 1]
+        seg_len = distance(p1, p2)
+
+        if seg_len == 0:
+            continue
+
+        ux = (p2[0] - p1[0]) / seg_len
+        uy = (p2[1] - p1[1]) / seg_len
+
+        d = spacing
+        while d < seg_len:
+            nx = p1[0] + ux * d
+            ny = p1[1] + uy * d
+            new_points.append((nx, ny))
+            d += spacing
+
+        new_points.append(p2)
+
+    if len(new_points) > 1 and distance(new_points[0], new_points[-1]) < 1e-9:
+        new_points.pop()
+
+    return new_points
+
+
+def polygon_perimeter(points):
+    if len(points) < 2:
+        return 0.0
+
+    total = 0.0
+    for i in range(len(points)):
+        total += distance(points[i], points[(i + 1) % len(points)])
+    return total
+
+
+def estimate_min_radius(points):
+    if len(points) < 3:
+        return 999999.0
+
+    radii = []
+
+    for i in range(len(points)):
+        p0 = np.array(points[i - 1], dtype=float)
+        p1 = np.array(points[i], dtype=float)
+        p2 = np.array(points[(i + 1) % len(points)], dtype=float)
+
+        a = np.linalg.norm(p1 - p0)
+        b = np.linalg.norm(p2 - p1)
+        c = np.linalg.norm(p2 - p0)
+
+        if a < 1e-9 or b < 1e-9 or c < 1e-9:
+            continue
+
+        area2 = abs(np.cross(p1 - p0, p2 - p0))
+        if area2 < 1e-9:
+            continue
+
+        radius = (a * b * c) / (2.0 * area2)
+        radii.append(radius)
+
+    if not radii:
+        return 999999.0
+
+    return float(min(radii))
+
+
+def classify_path(points):
+    perim = polygon_perimeter(points)
+    min_r = estimate_min_radius(points)
+
+    is_small = (perim <= SMALL_PATH_PERIMETER_MM) or (min_r <= SMALL_RADIUS_MM)
+
+    return {
+        "perimeter_mm": perim,
+        "min_radius_mm": min_r,
+        "is_small": is_small
+    }
+
+
+def build_dragknife_path(points, knife_offset, tolerance_deg, arc_segments):
+    """
+    Bygg kompensert bane for drag knife.
+    """
+    if len(points) < 3:
+        return points[:]
+
+    out = []
+    n = len(points)
+
+    for i in range(n):
+        prev_p = points[i - 1]
+        corner = points[i]
+        next_p = points[(i + 1) % n]
+
+        vin = (corner[0] - prev_p[0], corner[1] - prev_p[1])
+        vout = (next_p[0] - corner[0], next_p[1] - corner[1])
+
+        in_len = np.hypot(vin[0], vin[1])
+        out_len = np.hypot(vout[0], vout[1])
+
+        if in_len < 1e-9 or out_len < 1e-9:
+            if not out or distance(out[-1], corner) > 1e-9:
+                out.append(corner)
+            continue
+
+        uin = normalize(vin[0], vin[1])
+        uout = normalize(vout[0], vout[1])
+
+        turn_deg = signed_turn_angle_deg(vin, vout)
+        abs_turn = abs(turn_deg)
+
+        local_offset = min(knife_offset, in_len * 0.45, out_len * 0.45)
+
+        if abs_turn < tolerance_deg or local_offset < 1e-4:
+            if not out or distance(out[-1], corner) > 1e-9:
+                out.append(corner)
+            continue
+
+        p_before = (
+            corner[0] - uin[0] * local_offset,
+            corner[1] - uin[1] * local_offset
+        )
+
+        overshoot = (
+            corner[0] + uin[0] * local_offset,
+            corner[1] + uin[1] * local_offset
+        )
+
+        p_after = (
+            corner[0] + uout[0] * local_offset,
+            corner[1] + uout[1] * local_offset
+        )
+
+        if not out:
+            out.append(p_before)
+        else:
+            if distance(out[-1], p_before) > 1e-9:
+                out.append(p_before)
+
+        if distance(out[-1], overshoot) > 1e-9:
+            out.append(overshoot)
+
+        start_ang = np.arctan2(overshoot[1] - corner[1], overshoot[0] - corner[0])
+        end_ang = np.arctan2(p_after[1] - corner[1], p_after[0] - corner[0])
+
+        if turn_deg > 0:
+            while end_ang <= start_ang:
+                end_ang += 2.0 * np.pi
+        else:
+            while end_ang >= start_ang:
+                end_ang -= 2.0 * np.pi
+
+        for j in range(1, arc_segments + 1):
+            t = j / arc_segments
+            ang = start_ang + (end_ang - start_ang) * t
+            px = corner[0] + local_offset * np.cos(ang)
+            py = corner[1] + local_offset * np.sin(ang)
+            if distance(out[-1], (px, py)) > 1e-9:
+                out.append((px, py))
+
+    return out
+
+
+def prepare_dragknife_paths(paths_mm):
+    prepared = []
+
+    for path in paths_mm:
+        if len(path) < 3:
+            continue
+
+        resampled = resample_closed_path(path, PATH_POINT_SPACING_MM)
+        compensated = build_dragknife_path(
+            resampled,
+            knife_offset=KNIFE_OFFSET_MM,
+            tolerance_deg=CORNER_TOLERANCE_DEG,
+            arc_segments=SWIVEL_ARC_SEGMENTS
+        )
+        info = classify_path(resampled)
+
+        prepared.append({
+            "original": path,
+            "resampled": resampled,
+            "compensated": compensated,
+            "info": info
+        })
+
+    return prepared
 
 
 def check_bounds(all_paths):
@@ -296,30 +538,61 @@ def save_debug_images(original_img, cropped_img, gray_img, binary_img, raw_conto
     cv2.imwrite(str(DEBUG_SMOOTH_CONTOURS), smooth_dbg)
 
 
-def generate_gcode(paths):
+def generate_gcode(prepared_paths):
     g = []
 
     g.append("; Pakning generert frå bilete")
+    g.append("; Drag knife compensation aktiv")
     g.append("G21 ; mm")
     g.append("G90 ; absolute positioning")
     g.append("G28 ; home")
     g.append(f"G0 Z{SAFE_Z:.3f} F{FEED_Z}")
 
-    for path in paths:
+    for item in prepared_paths:
+        path = item["compensated"]
+        info = item["info"]
+
         if len(path) < 2:
             continue
 
+        cut_feed = FEED_XY_SLOW if info["is_small"] else FEED_XY_NORMAL
         start_x, start_y = path[0]
+
+        g.append("")
+        g.append(
+            f"; path perimeter={info['perimeter_mm']:.2f} mm, "
+            f"min_radius={info['min_radius_mm']:.2f} mm, "
+            f"small={info['is_small']}"
+        )
 
         g.append(f"G0 X{start_x:.3f} Y{start_y:.3f} F{FEED_TRAVEL}")
         g.append(f"G1 Z{CUT_Z:.3f} F{FEED_Z}")
 
-        for x, y in path[1:]:
-            g.append(f"G1 X{x:.3f} Y{y:.3f} F{FEED_XY}")
+        prev_feed = None
 
-        g.append(f"G1 X{start_x:.3f} Y{start_y:.3f} F{FEED_XY}")
+        for i in range(1, len(path)):
+            x, y = path[i]
+
+            feed = cut_feed
+
+            # Litt ekstra ro rundt svært små steg / swivel-segment
+            seg_len = distance(path[i - 1], path[i])
+            if seg_len <= max(KNIFE_OFFSET_MM * 0.6, PATH_POINT_SPACING_MM * 1.2):
+                feed = min(feed, FEED_XY_SWIVEL)
+
+            if USE_SWIVEL_LIFT and feed == FEED_XY_SWIVEL:
+                g.append(f"G1 Z{SWIVEL_Z:.3f} F{FEED_Z}")
+                g.append(f"G1 X{x:.3f} Y{y:.3f} F{feed}")
+                g.append(f"G1 Z{CUT_Z:.3f} F{FEED_Z}")
+            else:
+                g.append(f"G1 X{x:.3f} Y{y:.3f} F{feed}")
+
+            prev_feed = feed
+
+        g.append(f"G1 X{start_x:.3f} Y{start_y:.3f} F{cut_feed}")
         g.append(f"G0 Z{SAFE_Z:.3f} F{FEED_Z}")
 
+    g.append("")
     g.append(f"G0 X0 Y0 F{FEED_TRAVEL}")
     g.append("M84 ; motors off")
 
@@ -357,6 +630,13 @@ def save_debug_info(
     lines.append(f"MM_PER_PIXEL = {MM_PER_PIXEL}")
     lines.append(f"OFFSET_X = {OFFSET_X}")
     lines.append(f"OFFSET_Y = {OFFSET_Y}")
+    lines.append(f"KNIFE_OFFSET_MM = {KNIFE_OFFSET_MM}")
+    lines.append(f"CORNER_TOLERANCE_DEG = {CORNER_TOLERANCE_DEG}")
+    lines.append(f"PATH_POINT_SPACING_MM = {PATH_POINT_SPACING_MM}")
+    lines.append(f"SWIVEL_ARC_SEGMENTS = {SWIVEL_ARC_SEGMENTS}")
+    lines.append(f"FEED_XY_NORMAL = {FEED_XY_NORMAL}")
+    lines.append(f"FEED_XY_SLOW = {FEED_XY_SLOW}")
+    lines.append(f"FEED_XY_SWIVEL = {FEED_XY_SWIVEL}")
     lines.append("")
     lines.append("KONTURAR")
     lines.append("-" * 40)
@@ -382,7 +662,6 @@ def save_debug_info(
     for i, path in enumerate(paths_mm, start=1):
         if not path:
             continue
-
         xs = [p[0] for p in path]
         ys = [p[1] for p in path]
         lines.append(
@@ -419,14 +698,18 @@ def main():
         pts_mm = transform_points_to_mm(pts_px, image_height)
         paths_mm.append(pts_mm)
 
-    check_bounds(paths_mm)
+    status("KOMPENSERER FOR DRAG KNIFE")
+    prepared_paths = prepare_dragknife_paths(paths_mm)
+
+    compensated_paths = [item["compensated"] for item in prepared_paths]
+    check_bounds(compensated_paths)
 
     status("LAGRAR DEBUG")
     save_debug_images(img, cropped, gray, binary, contours, smoothed_contours)
-    save_debug_info(img.shape, cropped.shape, roi_rect, contours, smoothed_contours, paths_mm)
+    save_debug_info(img.shape, cropped.shape, roi_rect, contours, smoothed_contours, compensated_paths)
 
     status("SKRIV G-KODE")
-    gcode_text = generate_gcode(paths_mm)
+    gcode_text = generate_gcode(prepared_paths)
     OUTPUT_GCODE.write_text(gcode_text, encoding="utf-8")
 
     if not OUTPUT_GCODE.exists() or OUTPUT_GCODE.stat().st_size == 0:
