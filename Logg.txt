@@ -1,0 +1,12 @@
+Produksjon av g-kode:
+For å lage gkoda brukte eg biblioteket opencv i python til å finne konturen. Med den lagde eg lister til punkta til dei ulike konturane eg fekk ut. For eksempel ei liste til kvar sirkel i ei pakning.
+For å lage sjølve koda brukte eg ei løkke som gjekk gjennom listene og lagde ei linje for kvart punkt i listene med ei løkke til (altså ei dobbel for-løkke)
+
+Det er fleire problem som kan opstå då.
+Sidan vi brukar eit dragknife system, så vil ikkje punkta maskina trur den er matche heilt opp med dei punkta kniven er. Derfor er vi nødt til å kompensere for det.
+Vi må 1 passe på at små sirklar/kurver ikkje blir mindre en dei skal:
+då må vi auke diameteren som gkoda skal følge. Det vi kunne ka gjort er å bruke vektorrekning til å finne ut nøyaktig kva path koda skal ta for at kniven skal følge ønska path.
+Etter å ha styrt litt med det, fant eg ut at det var meir styr en det eg hadde fått ut av det. 
+Med å auke diameteren kunstig kan vi få omtrent samme resultat som vi hadde fått med matematisk korrekt bevegelse.
+Eit anna problem er at den slit med krappe svingar. Dei vil bli runda av om vi bare følger kurva vi får ut av biletet.
+Løysinga vi har gåt for her er å lage ei slags bevegelse rundt punktet kniven står på
