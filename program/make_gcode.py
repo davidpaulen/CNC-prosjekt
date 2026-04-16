@@ -34,12 +34,13 @@ BED_WIDTH_MM = 250.0
 BED_HEIGHT_MM = 210.0
 
 MM_PER_PIXEL = 1.0 / 11.0
+SCALE_FACTOR = 15/11.6
 
-OFFSET_X = 20.0
-OFFSET_Y = 20.0
+OFFSET_X = 5.0
+OFFSET_Y = 5.0
 
 SAFE_Z = 10.0
-CUT_Z = 0.0
+CUT_Z = 1.8
 
 FEED_Z = 600
 FEED_TRAVEL = 3000
@@ -286,8 +287,8 @@ def transform_points_to_mm(points, image_height):
     transformed = []
 
     for x_px, y_px in points:
-        x_mm = OFFSET_X + x_px * MM_PER_PIXEL
-        y_mm = OFFSET_Y + (image_height - y_px) * MM_PER_PIXEL
+        x_mm = OFFSET_X + x_px * MM_PER_PIXEL * SCALE_FACTOR
+        y_mm = OFFSET_Y + (image_height - y_px) * MM_PER_PIXEL * SCALE_FACTOR
         transformed.append((x_mm, y_mm))
 
     return transformed
@@ -569,25 +570,25 @@ def generate_gcode(prepared_paths):
         g.append(f"G1 Z{CUT_Z:.3f} F{FEED_Z}")
 
         prev_feed = None
+        for i in range(3):
+            for i in range(1, len(path)):
+                x, y = path[i]
 
-        for i in range(1, len(path)):
-            x, y = path[i]
+                feed = cut_feed
 
-            feed = cut_feed
+                # Litt ekstra ro rundt svært små steg / swivel-segment
+                seg_len = distance(path[i - 1], path[i])
+                if seg_len <= max(KNIFE_OFFSET_MM * 0.6, PATH_POINT_SPACING_MM * 1.2):
+                    feed = min(feed, FEED_XY_SWIVEL)
 
-            # Litt ekstra ro rundt svært små steg / swivel-segment
-            seg_len = distance(path[i - 1], path[i])
-            if seg_len <= max(KNIFE_OFFSET_MM * 0.6, PATH_POINT_SPACING_MM * 1.2):
-                feed = min(feed, FEED_XY_SWIVEL)
+                if USE_SWIVEL_LIFT and feed == FEED_XY_SWIVEL:
+                    g.append(f"G1 Z{SWIVEL_Z:.3f} F{FEED_Z}")
+                    g.append(f"G1 X{x:.3f} Y{y:.3f} F{feed}")
+                    g.append(f"G1 Z{CUT_Z:.3f} F{FEED_Z}")
+                else:
+                    g.append(f"G1 X{x:.3f} Y{y:.3f} F{feed}")
 
-            if USE_SWIVEL_LIFT and feed == FEED_XY_SWIVEL:
-                g.append(f"G1 Z{SWIVEL_Z:.3f} F{FEED_Z}")
-                g.append(f"G1 X{x:.3f} Y{y:.3f} F{feed}")
-                g.append(f"G1 Z{CUT_Z:.3f} F{FEED_Z}")
-            else:
-                g.append(f"G1 X{x:.3f} Y{y:.3f} F{feed}")
-
-            prev_feed = feed
+                prev_feed = feed
 
         g.append(f"G1 X{start_x:.3f} Y{start_y:.3f} F{cut_feed}")
         g.append(f"G0 Z{SAFE_Z:.3f} F{FEED_Z}")
@@ -628,6 +629,7 @@ def save_debug_info(
     lines.append(f"APPROX_EPSILON_FACTOR = {APPROX_EPSILON_FACTOR}")
     lines.append(f"ONLY_LARGEST_CONTOUR = {ONLY_LARGEST_CONTOUR}")
     lines.append(f"MM_PER_PIXEL = {MM_PER_PIXEL}")
+    lines.append(f"SCALE_FACTOR = {SCALE_FACTOR}")
     lines.append(f"OFFSET_X = {OFFSET_X}")
     lines.append(f"OFFSET_Y = {OFFSET_Y}")
     lines.append(f"KNIFE_OFFSET_MM = {KNIFE_OFFSET_MM}")
