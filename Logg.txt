@@ -1,12 +1,37 @@
 Produksjon av g-kode:
-For å lage gkoda brukte eg biblioteket opencv i python til å finne konturen. Med den lagde eg lister til punkta til dei ulike konturane eg fekk ut. For eksempel ei liste til kvar sirkel i ei pakning.
-For å lage sjølve koda brukte eg ei løkke som gjekk gjennom listene og lagde ei linje for kvart punkt i listene med ei løkke til (altså ei dobbel for-løkke)
+For å lage gkoda brukte eg biblioteket opencv i python til å finne konturen. Med den lagde eg lister til punkta til dei ulike konturane eg fekk ut. 
+For eksempel ei liste til kvar sirkel i ei pakning.
+For å lage sjølve koda brukte eg ei løkke som gjekk gjennom listene og lagde ei linje for kvart punkt i listene med ei løkke til (altså ei dobbel for-løkke.)
 
 Det er fleire problem som kan opstå då.
 Sidan vi brukar eit dragknife system, så vil ikkje punkta maskina trur den er matche heilt opp med dei punkta kniven er. Derfor er vi nødt til å kompensere for det.
 Vi må 1 passe på at små sirklar/kurver ikkje blir mindre en dei skal:
-då må vi auke diameteren som gkoda skal følge. Det vi kunne ka gjort er å bruke vektorrekning til å finne ut nøyaktig kva path koda skal ta for at kniven skal følge ønska path.
+då må vi auke diameteren som gkoda skal følge. Det vi kunne ha gjort er å bruke vektorrekning til å finne ut nøyaktig kva path koda skal ta for at kniven skal følge ønska path.
 Etter å ha styrt litt med det, fant eg ut at det var meir styr en det eg hadde fått ut av det. 
 Med å auke diameteren kunstig kan vi få omtrent samme resultat som vi hadde fått med matematisk korrekt bevegelse.
 Eit anna problem er at den slit med krappe svingar. Dei vil bli runda av om vi bare følger kurva vi får ut av biletet.
-Løysinga vi har gåt for her er å lage ei slags bevegelse rundt punktet kniven står på
+Løysinga vi har gåt for her er å lage ei slags bevegelse rundt punktet kniven står på slik at den kan rette seg inn etter ny retning
+
+For å lagre dei linjene som blei laga lagde eg ei ny fil i mappa "data" kalt pakking.gcode som eg sendte kvar linje med gkode over til.
+
+
+Komunikasjon mellom kontrollpanel og raspberry pi 5(pi5):
+For å få kontrollpanelet til å kunne snakke med pi5 hadde vi 2 oppsett. 
+Det eine var på kontrollpanelet. 
+Koda på panelet vart satt opp slik at om ein trykkar på knappen når ein er på ein funksjon, 
+då sendar den melding til pi5 med Serial.print("CMD:"); og så kva funksjon som skal bli utført, for eksempel "CMD: START KUTT".
+På pi5 har eg laga til eit program listener.py, som når den blir kjørt lyttar etter komandoar som blei sendt frå panelet. 
+Eg satt det opp slik at det blir kjørt konstant når pi5 er aktiv på systemctl i pi5. 
+I programmet har eg lagt inn ein dictionary med dei forskjellege komandoane som kan bli sendt frå panelet som nøkkel og 
+pathen til dei ulike programma som høyrar til komandoen som verdi. Om programmet høyrar ein komando så kjørar den programmet som ligg i den pathen.
+I dei ulike programma har eg også lagt inn meldingar som blir printa ut på skjermen på panelet slik at ein kan sjå statusen på programmet.
+
+
+snakke med printeren:
+
+Planen først var å bruke Octoprint. Med det fekk vi satt opp printeren ganske lett, men 
+men vi brukte klipper.
+Oppsett av klipper.
+
+Sende gkoda til printeren:
+I programmet start_cut.py sendte eg først gkoda som blei laga i make_gcode.py over til klipper programmet der den lagrar alle gkodene. Så skjekka eg om 
