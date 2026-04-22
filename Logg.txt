@@ -1,44 +1,123 @@
-Produksjon av g-kode:
-For å lage gkoda brukte eg biblioteket opencv i python til å finne konturen. Med den lagde eg lister til punkta til dei ulike konturane eg fekk ut. 
-For eksempel ei liste til kvar sirkel i ei pakning.
-For å lage sjølve koda brukte eg ei løkke som gjekk gjennom listene og lagde ei linje for kvart punkt i listene med ei løkke til (altså ei dobbel for-løkke).
-Eg starta med hoaming av aksene slik at den veit kor den er.
+==================================================
+OPPSETT AV HOTSPOT PÅ RASPBERRY PI
+==================================================
 
-Det er fleire problem som kan opstå då.
-Sidan vi brukar eit dragknife system, så vil ikkje punkta maskina trur den er matche heilt opp med dei punkta kniven er. Derfor er vi nødt til å kompensere for det.
-Vi må 1 passe på at små sirklar/kurver ikkje blir mindre en dei skal:
-då må vi auke diameteren som gkoda skal følge. Det vi kunne ha gjort er å bruke vektorrekning til å finne ut nøyaktig kva path koda skal ta for at kniven skal følge ønska path.
-Etter å ha styrt litt med det, fant eg ut at det var meir styr en det eg hadde fått ut av det. 
-Med å auke diameteren kunstig kan vi få omtrent samme resultat som vi hadde fått med matematisk korrekt bevegelse.
-Eit anna problem er at den slit med krappe svingar. Dei vil bli runda av om vi bare følger kurva vi får ut av biletet.
-Løysinga vi har gåt for her er å lage ei slags bevegelse rundt punktet kniven står på slik at den kan rette seg inn etter ny retning
+Denne loggen forklarar kort korleis systemet er sett opp og korleis programvara fungerer.
 
-For å lagre dei linjene som blei laga lagde eg ei ny fil i mappa "data" kalt pakking.gcode som eg sendte kvar linje med gkode over til.
+Planen var først å bruke WiFi (Eduroam) for å kommunisere med Raspberry Pi.
+Dette viste seg å vere upraktisk fordi IP-adressa endrar seg kvar gong Pi-en
+koplar seg til nettet, og det blir då meir styr å finne den kvar gong.
 
+Løysinga vart derfor å setje opp Pi-en som eit eige hotspot. Då kan ein
+kople seg direkte til Pi-en utan å vere avhengig av skulenettet.
+Ulempa er at ein ikkje får tilgang til internett i hotspot-modus.
 
-Komunikasjon mellom kontrollpanel og raspberry pi 5(pi5):
-For å få kontrollpanelet til å kunne snakke med pi5 hadde vi 2 oppsett. 
-Det eine var på kontrollpanelet. 
-Koda på panelet vart satt opp slik at om ein trykkar på knappen når ein er på ein funksjon, 
-då sendar den melding til pi5 med Serial.print("CMD:"); og så kva funksjon som skal bli utført, for eksempel "CMD: START KUTT".
-På pi5 har eg laga til eit program listener.py, som når den blir kjørt lyttar etter komandoar som blei sendt frå panelet. 
-Eg satt det opp slik at det blir kjørt konstant når pi5 er aktiv på systemctl i pi5. 
-I programmet har eg lagt inn ein dictionary med dei forskjellege komandoane som kan bli sendt frå panelet som nøkkel og 
-pathen til dei ulike programma som høyrar til komandoen som verdi. Om programmet høyrar ein komando så kjørar den programmet som ligg i den pathen.
-I dei ulike programma har eg også lagt inn meldingar som blir printa ut på skjermen på panelet slik at ein kan sjå statusen på programmet.
+For å løyse dette vart det lagt opp slik at ein kan bytte mellom hotspot
+og heimenett. Då kan ein bruke internett når ein treng det, og hotspot
+når ein vil kople seg direkte til Pi-en.
 
 
-snakke med printeren (Original_Prusa_i3_MK3):
+==================================================
+PRODUKSJON AV G-KODE
+==================================================
 
-Planen først var å bruke Octoprint. Med det fekk vi satt opp printeren ganske lett, men vi fekk eit problem med å få den til å halde seg påkopla. 
-Mogleg komplikasjonar med baudrate. Derfor prøvde vi å bruke klipper i stedet. Då flashar vi printeren med eit eiget firmware, og kjørar gkoda direkte frå pi.
-Vi kan då også bruke firmware der vi slepp å ha med varmeelement, ekstruder og andre unødvendige ting for vårt prosjekt (Sidan vi bare treng aksesystem). 
-Med klipper kan vi velge kva baudrate printeren skal kjøre på og vi kan få meir stabil komunikasjon mellom prusa og pi. 
-Når vi gjor det fekk vi likevel andre problem.
-Når vi skulle flashe printeren med pi, ville ikkje reboot-en når vi trykte på rebootknappen vare lenge nok som gjor det vanskeleg å flashe heile programmet.
-Derfor motte vi gjer det via laptop i stedet (Som funka bra med litt timing). 
+G-koden vert generert ved hjelp av OpenCV i Python. Dette blir brukt til
+å lese bilete, finne konturar og lagre desse som lister med punkt.
+Kvar kontur (for eksempel ein sirkel) får si eiga liste.
 
-Sende gkoda til printeren:
-I programmet start_cut.py sendte eg først gkoda som blei laga i make_gcode.py over til klipper programmet der den lagrar alle gkodene. 
-Så skjekkar vi om vi kan snakke med printeren og om den har eit aktivt print/kutt. 
-Om  alt er ok startar den koda med namn pakking.gcode som blei laga i make_gcode.py.
+For å lage sjølve G-koden blir det brukt ei dobbel for-løkke der den ytre
+går gjennom kvar kontur og den indre går gjennom punkta i konturen.
+For kvart punkt blir det laga ei linje med G-kode. Programmet startar
+med homing av aksane slik at maskina veit kvar den er.
+
+Dette gjer det mogleg å konvertere bilete direkte til bevegelse på maskina.
+
+
+------------------------------
+UTFORDRINGAR OG LØYSINGAR
+------------------------------
+
+Det oppstår fleire problem når ein brukar dragknife. Kniven har eit offset
+frå rotasjonspunktet, noko som gjer at den ikkje følgjer bana nøyaktig.
+
+Dette fører til at sirklar kan bli for små, hjørne blir avrunda, og ein kan
+få små avvik i starten og slutten av banar.
+
+For å kompensere for dette har eg valt å auke diameteren på konturane litt
+før G-koden blir generert. Dette gir god nok nøyaktigheit utan at det blir
+for komplisert å implementere.
+
+Eit anna problem er krappe svingar. Kniven klarer ikkje å snu retning med
+ein gong, og då blir svingane runda av. For å løyse dette blir det lagt inn
+ekstra bevegelse rundt punktet slik at kniven får tid til å rotere.
+
+Den ferdige G-koden blir lagra i fila data/pakking.gcode.
+
+
+==================================================
+KOMMUNIKASJON: KONTROLLPANEL <-> PI5
+==================================================
+
+Kommunikasjonen skjer via seriell kommunikasjon.
+
+På kontrollpanelet blir det sendt kommandoar med Serial.print() når ein
+trykkar på ein knapp. Formatet er "CMD:<kommando>", for eksempel
+"CMD:START_KUTT".
+
+På Raspberry Pi køyrer programmet listener.py som ein systemteneste via
+systemctl. Dette programmet lyttar konstant etter kommandoar.
+
+Det er sett opp ein dictionary som mappar kommandoar til program (filstiar).
+Når ein kommando blir motteken, finn programmet rett fil og køyrer den.
+
+Programma sender også tilbake statusmeldingar som blir vist på panelet,
+slik at ein kan sjå kva som skjer.
+
+
+==================================================
+KOMMUNIKASJON MED PRINTER
+==================================================
+
+Printeren som blir brukt er Original Prusa i3 MK3.
+
+Planen først var å bruke OctoPrint. Det var enkelt å setje opp, men vi fekk
+problem med ustabil tilkopling, truleg knytt til baudrate. Dette gjorde
+løysinga lite påliteleg i praksis.
+
+Derfor gjekk vi over til Klipper firmware. Med Klipper kan vi styre
+baudrate sjølv og få meir stabil kommunikasjon mellom Pi og printer.
+Vi kan også fjerne unødvendige funksjonar som ekstruder og varmeelement,
+sidan vi berre brukar aksane.
+
+Det oppstod likevel problem med flashing via Pi, fordi rebooten ikkje varte
+lenge nok. Løysinga vart å flashe via laptop i staden, som fungerte bra.
+
+
+==================================================
+SENDE G-KODE TIL PRINTER
+==================================================
+
+I programmet start_cut.py blir G-koden først sendt frå make_gcode.py til
+Klipper, der den blir lagra.
+
+Deretter sjekkar programmet om det er kontakt med printeren og om det
+allereie køyrer ein jobb. Dersom alt er i orden, blir fila pakking.gcode
+starta.
+
+
+==================================================
+FEILHANDTERING OG NØDSTOPP
+==================================================
+
+Eit problem som oppstod var at klipper.service mista kontakt med MCU.
+Då kunne ikkje Pi snakke med printeren, og jobben stoppa.
+
+For å løyse dette måtte vi først kople oss til Pi via hotspot og restarte
+klipper.service manuelt.
+
+Seinare vart det laga eit eige program som kan restarte Klipper automatisk.
+Dette fungerer også som ein nødstopp, slik at maskina kan stoppast raskt
+ved behov.
+
+
+==================================================
