@@ -1,7 +1,8 @@
 Produksjon av g-kode:
 For å lage gkoda brukte eg biblioteket opencv i python til å finne konturen. Med den lagde eg lister til punkta til dei ulike konturane eg fekk ut. 
 For eksempel ei liste til kvar sirkel i ei pakning.
-For å lage sjølve koda brukte eg ei løkke som gjekk gjennom listene og lagde ei linje for kvart punkt i listene med ei løkke til (altså ei dobbel for-løkke.)
+For å lage sjølve koda brukte eg ei løkke som gjekk gjennom listene og lagde ei linje for kvart punkt i listene med ei løkke til (altså ei dobbel for-løkke).
+Eg starta med hoaming av aksene slik at den veit kor den er.
 
 Det er fleire problem som kan opstå då.
 Sidan vi brukar eit dragknife system, så vil ikkje punkta maskina trur den er matche heilt opp med dei punkta kniven er. Derfor er vi nødt til å kompensere for det.
@@ -27,11 +28,17 @@ pathen til dei ulike programma som høyrar til komandoen som verdi. Om programme
 I dei ulike programma har eg også lagt inn meldingar som blir printa ut på skjermen på panelet slik at ein kan sjå statusen på programmet.
 
 
-snakke med printeren:
+snakke med printeren (Original_Prusa_i3_MK3):
 
-Planen først var å bruke Octoprint. Med det fekk vi satt opp printeren ganske lett, men 
-men vi brukte klipper.
-Oppsett av klipper.
+Planen først var å bruke Octoprint. Med det fekk vi satt opp printeren ganske lett, men vi fekk eit problem med å få den til å halde seg påkopla. 
+Mogleg komplikasjonar med baudrate. Derfor prøvde vi å bruke klipper i stedet. Då flashar vi printeren med eit eiget firmware, og kjørar gkoda direkte frå pi.
+Vi kan då også bruke firmware der vi slepp å ha med varmeelement, ekstruder og andre unødvendige ting for vårt prosjekt (Sidan vi bare treng aksesystem). 
+Med klipper kan vi velge kva baudrate printeren skal kjøre på og vi kan få meir stabil komunikasjon mellom prusa og pi. 
+Når vi gjor det fekk vi likevel andre problem.
+Når vi skulle flashe printeren med pi, ville ikkje reboot-en når vi trykte på rebootknappen vare lenge nok som gjor det vanskeleg å flashe heile programmet.
+Derfor motte vi gjer det via laptop i stedet (Som funka bra med litt timing). 
 
 Sende gkoda til printeren:
-I programmet start_cut.py sendte eg først gkoda som blei laga i make_gcode.py over til klipper programmet der den lagrar alle gkodene. Så skjekka eg om 
+I programmet start_cut.py sendte eg først gkoda som blei laga i make_gcode.py over til klipper programmet der den lagrar alle gkodene. 
+Så skjekkar vi om vi kan snakke med printeren og om den har eit aktivt print/kutt. 
+Om  alt er ok startar den koda med namn pakking.gcode som blei laga i make_gcode.py.
