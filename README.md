@@ -1,146 +1,64 @@
-# CNC-prosjekt – Automatisk generering av G-kode frå bilete
+# CNC-prosjekt – Generering av G-kode frå bilete
 
-## 📌 Om prosjektet
+## Om prosjektet
 
-Dette prosjektet tek eit bilete av ei pakning og konverterer det automatisk til G-kode som kan brukast til å kutte forma med ein CNC-maskin (Prusa MK3S med drag knife).
+Dette prosjektet går ut på å ta eit bilete av ei pakning og gjere det om til G-kode som kan brukast til å kutte forma med ein CNC-maskin. Systemet er laga for ein Prusa MK3S med drag knife, der kniven følgjer konturen frå biletet.
 
-Systemet består av fleire delar:
-
-* 📷 Kamera (Raspberry Pi) som tek bilete
-* 🧠 Python-program som analyserer bilete
-* ✂️ Generering av G-kode med drag knife-kompensasjon
-* 🖨️ Sending av G-kode til printer via USB
+Løysinga er delt opp i fleire steg: først blir det teke eit bilete med Raspberry Pi, deretter blir biletet behandla i Python for å finne konturar. Desse konturane blir gjort om til koordinatar i millimeter, før det blir generert G-kode som maskina kan køyre.
 
 ---
 
-## ⚙️ Korleis det fungerer
+## Bruk av systemet
 
-1. **Ta bilete**
+Programmet er delt opp i fleire delar som blir køyrde etter kvarandre.
 
-```bash
-python program/take_picture.py
-```
+Først blir det teke eit bilete av objektet som skal kuttast ved å køyre `take_picture.py`. Dette lagrar biletet i data-mappa.
 
-2. **Generer G-kode**
+Deretter blir `make_gcode.py` køyrt. Denne fila analyserer biletet, finn konturane og genererer G-kode.
 
-```bash
-python program/make_gcode.py
-```
-
-3. **Send til printer**
-
-```bash
-python program/send_gkode_til_usb.py
-```
-
-4. **Start kutt**
-
-```bash
-python program/start_cut.py
-```
+Når G-koden er generert, kan han sendast til printeren med `send_gkode_til_usb.py`, og sjølve kutteprosessen blir starta med `start_cut.py`.
 
 ---
 
-## 🧠 Teknisk forklaring
+## Teknisk forklaring
 
 ### Biletebehandling
 
-* OpenCV blir brukt til:
+Biletet blir først gjort om til gråskala og filtrert for å redusere støy. Deretter blir det brukt terskling for å skilje objektet frå bakgrunnen. Etter dette blir konturane funne med OpenCV.
 
-  * Gråskala-konvertering
-  * Blur
-  * Terskling (Otsu)
-  * Morfologi
-* Konturar blir funne med `findContours`
+### Geometri og skalering
 
-### Geometri
-
-* Pixel → mm konvertering
-* Normalisering til printerens koordinatsystem
-* Skalering og offset
+Konturane som blir funne i pixlar blir gjort om til millimeter basert på ein kalibreringsfaktor. I tillegg blir dei flytta slik at dei passar innanfor arbeidsområdet til printeren.
 
 ### Drag knife-kompensasjon
 
-* Kompenserer for at kniven heng bak rotasjonspunktet
-* Lager små bogar i hjørne
-* Hindrar feil kutt i skarpe vinklar
+Sidan kniven ikkje står rett under rotasjonspunktet, må bana justerast. Dette blir gjort ved å legge inn små justeringar i hjørne slik at kuttet blir korrekt.
 
-### G-kode
+### Generering av G-kode
 
-* G21 (mm)
-* G90 (absolute)
-* Feedrate tilpassa små og store detaljar
-* 2 rundar per kontur for betre gjennomkutt
+Basert på konturane blir det generert G-kode med absolutte koordinatar. Programmet tilpassar også hastigheit basert på om det er små eller store detaljar, og køyrer fleire rundar for å sikre gjennomkutt.
 
 ---
 
-## 📁 Prosjektstruktur
+## Prosjektstruktur
 
-```text
-program/
-│
-├─ make_gcode.py
-├─ make_gcode/
-│  ├─ config.py
-│  ├─ geometry.py
-│  ├─ dragknife.py
-│  ├─ gcode.py
-│  ├─ image_processing.py
-│  ├─ contours.py
-│  └─ debug.py
-│
-├─ take_picture.py
-├─ send_gkode_til_usb.py
-├─ start_cut.py
-└─ restart_klipper_service.py
-```
+Koden er delt opp slik at hovudfila `make_gcode.py` styrer flyten, medan dei ulike delane av programmet er delt opp i eigne modular for biletebehandling, geometri, G-kode og drag knife-logikk.
 
 ---
 
-## 📦 Krav
+## Krav
 
-* Python 3.x
-* OpenCV
-* NumPy
-* Raspberry Pi med kamera
-* Klipper firmware
-
-Installer avhengigheiter:
-
-```bash
-pip install opencv-python numpy
-```
+Prosjektet krev Python 3 med bibliotek som OpenCV og NumPy. I tillegg trengst ein Raspberry Pi med kamera og ein printer med Klipper firmware.
 
 ---
 
-## ⚠️ Viktige parameterar
+## Vidare arbeid
 
-Finnast i:
-
-```text
-program/make_gcode/config.py
-```
-
-Eksempel:
-
-* `KNIFE_OFFSET_MM` – viktig for korrekt kutt
-* `MM_PER_PIXEL` – kalibrering
-* `OFFSET_X / OFFSET_Y` – plassering på bed
-* `SCALE_FACTOR` – størrelse
+Moglege forbetringar er betre kalibrering av skalering, enklare brukargrensesnitt og meir optimal generering av G-kode for kortare køyretid.
 
 ---
 
-## 🔧 Vidare arbeid
-
-* Automatisk kalibrering av scale
-* GUI/web-interface
-* Betre filtrering av konturar
-* Støtte for fleire materialtypar
-* Optimalisering av G-kode (kortare kjøretid)
-
----
-
-## 👤 Forfattar
+## Forfattar
 
 David Paulen
 CNC-prosjekt – Maskin- og energiteknologi
