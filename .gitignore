@@ -16,9 +16,6 @@ data/*.jpg
 data/debug*
 data/info.txt
 
-# Logg
-Logg.txt
-
 # OS
 .DS_Store
 Thumbs.db
