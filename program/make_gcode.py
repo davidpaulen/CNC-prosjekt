@@ -700,31 +700,26 @@ def main():
         pts_mm = transform_points_to_mm(pts_px, image_height)
         paths_mm.append(pts_mm)
 
+    paths_mm = normalize_paths_to_origin(paths_mm, OFFSET_X, OFFSET_Y)
+
     status("KOMPENSERER FOR DRAG KNIFE")
     prepared_paths = prepare_dragknife_paths(paths_mm)
 
-    compensated_paths = [item["compensated"] for item in prepared_paths]
-    check_bounds(compensated_paths)
+    compensated = [p["compensated"] for p in prepared_paths]
+    check_bounds(compensated)
 
     status("LAGRAR DEBUG")
     save_debug_images(img, cropped, gray, binary, contours, smoothed_contours)
-    save_debug_info(img.shape, cropped.shape, roi_rect, contours, smoothed_contours, compensated_paths)
+    save_debug_info(img.shape, cropped.shape, roi_rect, contours, smoothed_contours, compensated)
 
     status("SKRIV G-KODE")
     gcode_text = generate_gcode(prepared_paths)
     OUTPUT_GCODE.write_text(gcode_text, encoding="utf-8")
 
-    if not OUTPUT_GCODE.exists() or OUTPUT_GCODE.stat().st_size == 0:
-        fail("Klarte ikkje å lagre G-kode")
+    if not OUTPUT_GCODE.exists():
+        fail("Klarte ikkje lagre G-kode")
 
     status("FERDIG")
-    print(f"Laga: {OUTPUT_GCODE.name}")
-    print(f"Laga: {DEBUG_CROPPED.name}")
-    print(f"Laga: {DEBUG_GRAY.name}")
-    print(f"Laga: {DEBUG_BINARY.name}")
-    print(f"Laga: {DEBUG_RAW_CONTOURS.name}")
-    print(f"Laga: {DEBUG_SMOOTH_CONTOURS.name}")
-    print(f"Laga: {DEBUG_INFO.name}")
 
 
 if __name__ == "__main__":
