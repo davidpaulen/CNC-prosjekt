@@ -205,3 +205,17 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Prosjekt-genererte filer
+data/*.jpg
+data/*.png
+data/*.gcode
+data/debug*
+data/info.txt
+Logg.txt
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
